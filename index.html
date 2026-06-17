@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 聊天</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --sidebar: #ececf1;
+    --border: #e3e3e6;
+    --text: #1f2023;
+    --muted: #8e8ea0;
+    --accent: #10a37f;
+    --accent-hover: #0e8e6d;
+    --user-bubble: #10a37f;
+    --ai-bubble: #f0f0f2;
+    --danger: #e02e2e;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+  button, input, textarea, select { font-family: inherit; font-size: 14px; }
+
+  /* ---------- 侧边栏 ---------- */
+  #sidebar {
+    width: 260px;
+    background: var(--sidebar);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    transition: margin-left .2s;
+  }
+  #sidebar.collapsed { margin-left: -260px; }
+  .side-head { padding: 12px; }
+  #newChatBtn {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: #fff; border: none; border-radius: 8px;
+    cursor: pointer; font-weight: 600;
+  }
+  #newChatBtn:hover { background: var(--accent-hover); }
+  #sessionList { flex: 1; overflow-y: auto; padding: 0 8px; }
+  .session-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 9px 10px; margin-bottom: 4px;
+    border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: #3a3a44;
+  }
+  .session-item:hover { background: #e0e0e8; }
+  .session-item.active { background: #d7d7e0; font-weight: 600; }
+  .session-item .title {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .session-item .del {
+    opacity: 0; border: none; background: none; cursor: pointer;
+    color: var(--muted); font-size: 15px; padding: 0 2px;
+  }
+  .session-item:hover .del { opacity: 1; }
+  .session-item .del:hover { color: var(--danger); }
+  .side-foot { padding: 10px 12px; border-top: 1px solid var(--border); }
+  .side-foot button {
+    width: 100%; padding: 8px; background: #fff;
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .side-foot button + button { margin-top: 8px; }
+  .side-foot button:hover { background: #f0f0f2; }
+
+  /* ---------- 主区 ---------- */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: var(--panel);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .hbtn {
+    border: 1px solid var(--border); background: #fff;
+    border-radius: 8px; padding: 7px 11px; cursor: pointer; white-space: nowrap;
+  }
+  .hbtn:hover { background: #f0f0f2; }
+  header select {
+    padding: 7px 9px; border: 1px solid var(--border);
+    border-radius: 8px; background: #fff; max-width: 200px;
+  }
+  header .spacer { flex: 1; }
+  header h1 { font-size: 15px; margin: 0 6px 0 0; font-weight: 600; }
+
+  /* 聊天区 */
+  #chat { flex: 1; overflow-y: auto; padding: 24px 0; }
+  .msg-row { max-width: 820px; margin: 0 auto; padding: 6px 16px; display: flex; gap: 12px; }
+  .msg-row.user { flex-direction: row-reverse; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #fff;
+  }
+  .user .avatar { background: var(--user-bubble); }
+  .ai .avatar { background: #6e6e80; }
+  .bubble {
+    padding: 10px 14px; border-radius: 12px; line-height: 1.65;
+    word-break: break-word; max-width: 100%; overflow-x: auto;
+  }
+  .user .bubble { background: var(--user-bubble); color: #fff; white-space: pre-wrap; }
+  .ai .bubble { background: var(--ai-bubble); color: var(--text); }
+  /* markdown 元素 */
+  .bubble p { margin: 0 0 10px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble h1,.bubble h2,.bubble h3 { margin: 14px 0 8px; line-height: 1.3; }
+  .bubble h1 { font-size: 1.4em; } .bubble h2 { font-size: 1.25em; } .bubble h3 { font-size: 1.1em; }
+  .bubble ul,.bubble ol { margin: 0 0 10px; padding-left: 22px; }
+  .bubble li { margin: 3px 0; }
+  .bubble blockquote {
+    margin: 0 0 10px; padding: 2px 12px; border-left: 3px solid var(--muted);
+    color: #555; background: rgba(0,0,0,.03);
+  }
+  .bubble a { color: var(--accent); }
+  .bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .bubble table { border-collapse: collapse; margin: 0 0 10px; font-size: 13px; }
+  .bubble th,.bubble td { border: 1px solid var(--border); padding: 5px 9px; }
+  .bubble th { background: rgba(0,0,0,.04); }
+  .bubble pre {
+    background: #1e1e1e; color: #e6e6e6; padding: 12px; border-radius: 8px;
+    overflow-x: auto; margin: 0 0 10px;
+  }
+  .bubble code {
+    background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px;
+    font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px;
+  }
+  .bubble pre code { background: none; padding: 0; color: inherit; white-space: pre; }
+  .empty-hint { text-align: center; color: var(--muted); margin-top: 80px; font-size: 15px; }
+
+  /* 输入区 */
+  footer { flex-shrink: 0; padding: 12px 16px 18px; background: var(--bg); }
+  .input-wrap {
+    max-width: 820px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end;
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    padding: 8px 8px 8px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  #input {
+    flex: 1; border: none; outline: none; resize: none;
+    font-size: 15px; line-height: 1.5; max-height: 200px; padding: 6px 0; background: transparent;
+  }
+  #sendBtn {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    width: 38px; height: 38px; cursor: pointer; flex-shrink: 0; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #sendBtn:hover { background: var(--accent-hover); }
+  #sendBtn.stop { background: var(--danger); }
+  .hint { text-align: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+  /* ---------- 弹窗通用 ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: #fff; border-radius: 14px; padding: 22px;
+    width: 540px; max-width: 100%; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,.2);
+  }
+  .modal h2 { margin: 0 0 16px; font-size: 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+    border-radius: 8px; outline: none;
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--accent); }
+  .field small { color: var(--muted); font-size: 12px; }
+  .row2 { display: flex; gap: 12px; } .row2 > * { flex: 1; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  .btn-primary { background: var(--accent); color: #fff; border: none; padding: 9px 18px; border-radius: 8px; cursor: pointer; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost { background: #fff; border: 1px solid var(--border); padding: 9px 18px; border-radius: 8px; cursor: pointer; }
+  .btn-ghost:hover { background: #f0f0f2; }
+  .btn-danger { background: #fff; border: 1px solid var(--danger); color: var(--danger); padding: 9px 18px; border-radius: 8px; cursor: pointer; }
+  .btn-danger:hover { background: #fdeaea; }
+  .status { font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .status.ok { color: var(--accent); } .status.err { color: var(--danger); }
+
+  /* 提供商列表 */
+  .provider-list { margin-bottom: 14px; }
+  .provider-row {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+  }
+  .provider-row.active { border-color: var(--accent); background: #f0faf6; }
+  .provider-row .pname { flex: 1; font-weight: 600; }
+  .provider-row .pmeta { font-size: 12px; color: var(--muted); }
+  .provider-row .mini { border: none; background: none; cursor: pointer; color: var(--muted); padding: 4px; }
+  .provider-row .mini:hover { color: var(--text); }
+  .provider-row .mini.del:hover { color: var(--danger); }
+  .add-provider { width: 100%; padding: 9px; border: 1px dashed var(--border); background: #fff; border-radius: 8px; cursor: pointer; color: var(--muted); }
+  .add-provider:hover { border-color: var(--accent); color: var(--accent); }
+
+  @media (max-width: 720px) {
+    #sidebar { position: absolute; z-index: 50; height: 100%; box-shadow: 2px 0 8px rgba(0,0,0,.15); }
+  }
+</style>
+</head>
+<body>
+  <!-- 侧边栏 -->
+  <div id="sidebar">
+    <div class="side-head">
+      <button id="newChatBtn">+ 新建对话</button>
+    </div>
+    <div id="sessionList"></div>
+    <div class="side-foot">
+      <button id="managePromptBtn">📝 提示词库</button>
+      <button id="manageApiBtn">⚙ API 管理</button>
+    </div>
+  </div>
+
+  <!-- 主区 -->
+  <div id="main">
+    <header>
+      <button class="hbtn" id="toggleSidebar" title="折叠/展开">☰</button>
+      <select id="providerSelect" title="选择 API"></select>
+      <select id="modelSelect" title="选择模型"></select>
+      <div class="spacer"></div>
+      <button class="hbtn" id="chatSettingsBtn">对话设置</button>
+    </header>
+
+    <div id="chat"><div class="empty-hint">配置 API 后开始对话吧 👋</div></div>
+
+    <footer>
+      <div class="input-wrap">
+        <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+        <button id="sendBtn" title="发送">↑</button>
+      </div>
+      <div class="hint">兼容 OpenAI 格式 API · 数据仅保存在本地浏览器</div>
+    </footer>
+  </div>
+
+  <!-- API 管理弹窗 -->
+  <div class="overlay" id="apiOverlay">
+    <div class="modal">
+      <h2>API 管理</h2>
+      <div class="provider-list" id="providerList"></div>
+      <button class="add-provider" id="addProviderBtn">+ 添加 API 配置</button>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="closeApiBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提供商编辑弹窗 -->
+  <div class="overlay" id="editOverlay">
+    <div class="modal">
+      <h2 id="editTitle">编辑 API 配置</h2>
+      <div class="field">
+        <label>名称</label>
+        <input id="edName" placeholder="例如 OpenAI、本地 Ollama" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>API URL（Base URL，填到 /v1）</label>
+        <input id="edUrl" placeholder="https://api.openai.com/v1" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input id="edKey" type="password" placeholder="sk-..." autocomplete="off">
+      </div>
+      <div class="field">
+        <label>模型列表（逗号分隔，或点击右侧自动拉取）</label>
+        <textarea id="edModels" rows="2" placeholder="gpt-4o, gpt-4o-mini"></textarea>
+      </div>
+      <div class="status" id="edStatus"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="edFetchBtn">拉取模型列表</button>
+        <button class="btn-ghost" id="edCancelBtn">取消</button>
+        <button class="btn-primary" id="edSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 对话设置弹窗 -->
+  <div class="overlay" id="chatCfgOverlay">
+    <div class="modal">
+      <h2>对话设置</h2>
+      <div class="field">
+        <label>从提示词库选择</label>
+        <select id="ccPromptSelect"></select>
+        <small>选择后会填入下方系统提示词，可继续编辑。</small>
+      </div>
+      <div class="field">
+        <label>系统提示词（System Prompt）</label>
+        <textarea id="ccSystem" rows="4" placeholder="例如：你是一个乐于助人的助手，用简洁的中文回答。"></textarea>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Temperature（0–2）</label>
+          <input id="ccTemp" type="number" min="0" max="2" step="0.1" placeholder="0.7">
+        </div>
+        <div class="field">
+          <label>最大 Tokens（留空不限）</label>
+          <input id="ccMaxTokens" type="number" min="1" step="1" placeholder="不限">
+        </div>
+      </div>
+      <small style="color:var(--muted)">设置仅作用于当前对话。</small>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="ccCancelBtn">取消</button>
+        <button class="btn-primary" id="ccSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示词库弹窗 -->
+  <div class="overlay" id="promptOverlay">
+    <div class="modal">
+      <h2>提示词库</h2>
+      <div class="provider-list" id="promptList"></div>
+      <button class="add-provider" id="addPromptBtn">+ 添加提示词</button>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="closePromptBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示词编辑弹窗 -->
+  <div class="overlay" id="promptEditOverlay">
+    <div class="modal">
+      <h2 id="prEditTitle">添加提示词</h2>
+      <div class="field">
+        <label>名称</label>
+        <input id="prName" placeholder="例如：翻译助手、代码审查" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>内容</label>
+        <textarea id="prContent" rows="6" placeholder="在此填写提示词内容…"></textarea>
+      </div>
+      <div class="status" id="prStatus"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="prCancelBtn">取消</button>
+        <button class="btn-primary" id="prSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const KEY = "ai_chat_v2";
+
+  // ---------- 状态 ----------
+  let state = {
+    providers: [],          // {id, name, url, key, models:[]}
+    activeProviderId: "",
+    activeModel: "",
+    prompts: [],            // {id, name, content}
+    sessions: [],           // {id, title, messages, systemPrompt, promptId, temperature, maxTokens}
+    activeSessionId: ""
+  };
+  let streaming = false;
+  let abortCtrl = null;
+  let editingProviderId = null;
+  let editingPromptId = null;
+
+  const uid = () => Math.random().toString(36).slice(2, 10) + (state.sessions.length + state.providers.length);
+
+  // ---------- 持久化 ----------
+  function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) state = Object.assign(state, JSON.parse(raw));
+    } catch (e) {}
+  }
+  const normUrl = (u) => u.trim().replace(/\/+$/, "");
+
+  // ---------- 会话辅助 ----------
+  function activeSession() { return state.sessions.find(s => s.id === state.activeSessionId); }
+  function activeProvider() { return state.providers.find(p => p.id === state.activeProviderId); }
+
+  function newSession() {
+    const s = {
+      id: uid(), title: "新对话", messages: [],
+      systemPrompt: "", promptId: "", temperature: 0.7, maxTokens: null
+    };
+    state.sessions.unshift(s);
+    state.activeSessionId = s.id;
+    save(); renderSessions(); renderChat();
+    $("input").focus();
+  }
+
+  function deleteSession(id) {
+    state.sessions = state.sessions.filter(s => s.id !== id);
+    if (state.activeSessionId === id) {
+      state.activeSessionId = state.sessions[0] ? state.sessions[0].id : "";
+      if (!state.activeSessionId) newSession();
+    }
+    save(); renderSessions(); renderChat();
+  }
+
+  // ---------- 渲染：会话列表 ----------
+  function renderSessions() {
+    const list = $("sessionList");
+    list.innerHTML = "";
+    state.sessions.forEach(s => {
+      const item = document.createElement("div");
+      item.className = "session-item" + (s.id === state.activeSessionId ? " active" : "");
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = s.title || "新对话";
+      const del = document.createElement("button");
+      del.className = "del"; del.textContent = "🗑"; del.title = "删除";
+      del.onclick = (e) => { e.stopPropagation(); if (confirm("删除该对话？")) deleteSession(s.id); };
+      item.appendChild(title); item.appendChild(del);
+      item.onclick = () => { state.activeSessionId = s.id; save(); renderSessions(); renderChat(); };
+      list.appendChild(item);
+    });
+  }
+
+  // ---------- 渲染：提供商 / 模型下拉 ----------
+  function renderProviderSelects() {
+    const ps = $("providerSelect");
+    ps.innerHTML = "";
+    if (!state.providers.length) {
+      ps.innerHTML = '<option value="">未配置 API</option>';
+      $("modelSelect").innerHTML = '<option value="">—</option>';
+      return;
+    }
+    state.providers.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.id; o.textContent = p.name || "(未命名)";
+      ps.appendChild(o);
+    });
+    if (!state.providers.find(p => p.id === state.activeProviderId))
+      state.activeProviderId = state.providers[0].id;
+    ps.value = state.activeProviderId;
+    renderModelSelect();
+  }
+
+  function renderModelSelect() {
+    const ms = $("modelSelect");
+    ms.innerHTML = "";
+    const p = activeProvider();
+    if (!p || !p.models.length) {
+      ms.innerHTML = '<option value="">无模型</option>';
+      state.activeModel = "";
+      return;
+    }
+    p.models.forEach(m => {
+      const o = document.createElement("option");
+      o.value = m; o.textContent = m;
+      ms.appendChild(o);
+    });
+    if (!p.models.includes(state.activeModel)) state.activeModel = p.models[0];
+    ms.value = state.activeModel;
+  }
+
+  $("providerSelect").addEventListener("change", e => {
+    state.activeProviderId = e.target.value;
+    state.activeModel = "";
+    renderModelSelect(); save();
+  });
+  $("modelSelect").addEventListener("change", e => { state.activeModel = e.target.value; save(); });
+
+  // ---------- Markdown 渲染（纯本地） ----------
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+  }
+  function inlineMd(s) {
+    // 行内代码先占位，避免内部被其它规则破坏
+    const codes = [];
+    s = s.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return " " + (codes.length - 1) + " "; });
+    s = escapeHtml(s);
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    s = s.replace(/ (\d+) /g, (_, i) => "<code>" + escapeHtml(codes[+i]) + "</code>");
+    return s;
+  }
+  function renderMarkdown(src) {
+    const out = [];
+    const lines = src.replace(/\r\n/g, "\n").split("\n");
+    let i = 0;
+    while (i < lines.length) {
+      let line = lines[i];
+
+      // 代码块
+      const fence = line.match(/^```(\w*)/);
+      if (fence) {
+        const buf = []; i++;
+        while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++; // 跳过结束 ```
+        out.push("<pre><code>" + escapeHtml(buf.join("\n")) + "</code></pre>");
+        continue;
+      }
+      // 标题
+      const h = line.match(/^(#{1,3})\s+(.*)/);
+      if (h) { out.push("<h" + h[1].length + ">" + inlineMd(h[2]) + "</h" + h[1].length + ">"); i++; continue; }
+      // 水平线
+      if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+      // 引用
+      if (/^>\s?/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^>\s?/, "")); i++; }
+        out.push("<blockquote>" + renderMarkdown(buf.join("\n")) + "</blockquote>");
+        continue;
+      }
+      // 表格
+      if (/\|/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && /-/.test(lines[i + 1])) {
+        const head = line.split("|").filter(c => c.trim() !== "");
+        i += 2;
+        const rows = [];
+        while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim() !== "") {
+          rows.push(lines[i].split("|").filter(c => c.trim() !== "")); i++;
+        }
+        let t = "<table><thead><tr>" + head.map(c => "<th>" + inlineMd(c.trim()) + "</th>").join("") + "</tr></thead><tbody>";
+        rows.forEach(r => { t += "<tr>" + r.map(c => "<td>" + inlineMd(c.trim()) + "</td>").join("") + "</tr>"; });
+        t += "</tbody></table>";
+        out.push(t); continue;
+      }
+      // 无序列表
+      if (/^\s*[-*+]\s+/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*[-*+]\s+/, "")); i++; }
+        out.push("<ul>" + buf.map(t => "<li>" + inlineMd(t) + "</li>").join("") + "</ul>");
+        continue;
+      }
+      // 有序列表
+      if (/^\s*\d+\.\s+/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
+        out.push("<ol>" + buf.map(t => "<li>" + inlineMd(t) + "</li>").join("") + "</ol>");
+        continue;
+      }
+      // 空行
+      if (line.trim() === "") { i++; continue; }
+      // 段落（合并连续非空行）
+      const buf = [];
+      while (i < lines.length && lines[i].trim() !== "" && !/^(#{1,3}\s|>|```|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[i])) {
+        buf.push(lines[i]); i++;
+      }
+      out.push("<p>" + inlineMd(buf.join("\n")).replace(/\n/g, "<br>") + "</p>");
+    }
+    return out.join("");
+  }
+
+  // ---------- 渲染：聊天 ----------
+  function renderChat() {
+    const chat = $("chat");
+    chat.innerHTML = "";
+    const s = activeSession();
+    if (!s || !s.messages.length) {
+      chat.innerHTML = '<div class="empty-hint">开始一段新的对话吧 👋</div>';
+      return;
+    }
+    s.messages.forEach(m => appendBubble(m.role, m.content));
+    scrollBottom();
+  }
+
+  function appendBubble(role, content) {
+    const chat = $("chat");
+    const hint = chat.querySelector(".empty-hint");
+    if (hint) hint.remove();
+    const row = document.createElement("div");
+    row.className = "msg-row " + (role === "user" ? "user" : "ai");
+    const av = document.createElement("div");
+    av.className = "avatar"; av.textContent = role === "user" ? "我" : "AI";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    if (role === "user") bubble.textContent = content;
+    else bubble.innerHTML = renderMarkdown(content);
+    row.appendChild(av); row.appendChild(bubble);
+    chat.appendChild(row);
+    return bubble;
+  }
+  function scrollBottom() { const c = $("chat"); c.scrollTop = c.scrollHeight; }
+
+  // ---------- 发送 ----------
+  async function send() {
+    if (streaming) { if (abortCtrl) abortCtrl.abort(); return; }
+    const input = $("input");
+    const text = input.value.trim();
+    if (!text) return;
+    const p = activeProvider();
+    if (!p || !p.url || !state.activeModel) {
+      alert("请先在「API 管理」中配置 API 与模型");
+      openApi(); return;
+    }
+    let s = activeSession();
+    if (!s) { newSession(); s = activeSession(); }
+
+    s.messages.push({ role: "user", content: text });
+    appendBubble("user", text);
+    if (s.title === "新对话") { s.title = text.slice(0, 24); renderSessions(); }
+    input.value = ""; autoResize();
+    save();
+
+    const bubble = appendBubble("assistant", "");
+    bubble.innerHTML = '<span style="color:var(--muted)">思考中…</span>';
+    scrollBottom();
+
+    // 组装请求消息（含 system）
+    const reqMessages = [];
+    if (s.systemPrompt && s.systemPrompt.trim())
+      reqMessages.push({ role: "system", content: s.systemPrompt.trim() });
+    s.messages.forEach(m => reqMessages.push({ role: m.role, content: m.content }));
+
+    const body = { model: state.activeModel, messages: reqMessages, stream: true };
+    if (s.temperature != null && s.temperature !== "") body.temperature = Number(s.temperature);
+    if (s.maxTokens) body.max_tokens = Number(s.maxTokens);
+
+    streaming = true; setSendBtn(true);
+    abortCtrl = new AbortController();
+    let answer = "";
+
+    try {
+      const res = await fetch(p.url + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + p.key },
+        body: JSON.stringify(body),
+        signal: abortCtrl.signal
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error("HTTP " + res.status + " " + t.slice(0, 300));
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split("\n");
+        buf = parts.pop();
+        for (const line of parts) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          const payload = t.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const j = JSON.parse(payload);
+            const d = j.choices?.[0]?.delta?.content || "";
+            if (d) { answer += d; bubble.innerHTML = renderMarkdown(answer); scrollBottom(); }
+          } catch (e) {}
+        }
+      }
+      if (answer) {
+        s.messages.push({ role: "assistant", content: answer });
+        save();
+      } else {
+        bubble.innerHTML = '<span style="color:var(--muted)">（无返回内容）</span>';
+      }
+    } catch (err) {
+      if (err.name === "AbortError") {
+        if (answer) { s.messages.push({ role: "assistant", content: answer }); save(); }
+        else bubble.innerHTML = '<span style="color:var(--muted)">（已停止）</span>';
+      } else {
+        bubble.innerHTML = '<span style="color:var(--danger)">出错：' + escapeHtml(err.message) + "</span>";
+      }
+    } finally {
+      streaming = false; abortCtrl = null; setSendBtn(false); scrollBottom();
+    }
+  }
+  function setSendBtn(active) {
+    const b = $("sendBtn");
+    b.classList.toggle("stop", active);
+    b.textContent = active ? "■" : "↑";
+    b.title = active ? "停止" : "发送";
+  }
+
+  // ---------- 输入框 ----------
+  function autoResize() {
+    const t = $("input");
+    t.style.height = "auto";
+    t.style.height = Math.min(t.scrollHeight, 200) + "px";
+  }
+  $("input").addEventListener("input", autoResize);
+  $("input").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  $("sendBtn").addEventListener("click", send);
+  $("newChatBtn").addEventListener("click", newSession);
+  $("toggleSidebar").addEventListener("click", () => $("sidebar").classList.toggle("collapsed"));
+
+  // ---------- API 管理弹窗 ----------
+  function openApi() { renderProviderList(); $("apiOverlay").classList.add("show"); }
+  function closeApi() { $("apiOverlay").classList.remove("show"); }
+  $("manageApiBtn").addEventListener("click", openApi);
+  $("closeApiBtn").addEventListener("click", closeApi);
+  $("apiOverlay").addEventListener("click", e => { if (e.target === $("apiOverlay")) closeApi(); });
+
+  function renderProviderList() {
+    const box = $("providerList");
+    box.innerHTML = "";
+    if (!state.providers.length) {
+      box.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">还没有 API 配置，点击下方添加。</div>';
+      return;
+    }
+    state.providers.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "provider-row" + (p.id === state.activeProviderId ? " active" : "");
+      row.innerHTML =
+        '<div style="flex:1;min-width:0">' +
+          '<div class="pname">' + escapeHtml(p.name || "(未命名)") + (p.id === state.activeProviderId ? ' ✓' : '') + '</div>' +
+          '<div class="pmeta">' + escapeHtml(p.url || "未填 URL") + ' · ' + p.models.length + ' 个模型</div>' +
+        '</div>';
+      const useBtn = document.createElement("button");
+      useBtn.className = "mini"; useBtn.textContent = "使用"; useBtn.title = "设为当前";
+      useBtn.onclick = () => { state.activeProviderId = p.id; state.activeModel = ""; save(); renderProviderSelects(); renderProviderList(); };
+      const editBtn = document.createElement("button");
+      editBtn.className = "mini"; editBtn.textContent = "✎"; editBtn.title = "编辑";
+      editBtn.onclick = () => openEdit(p.id);
+      const delBtn = document.createElement("button");
+      delBtn.className = "mini del"; delBtn.textContent = "🗑"; delBtn.title = "删除";
+      delBtn.onclick = () => {
+        if (!confirm("删除配置「" + (p.name || "") + "」？")) return;
+        state.providers = state.providers.filter(x => x.id !== p.id);
+        if (state.activeProviderId === p.id) state.activeProviderId = state.providers[0]?.id || "";
+        save(); renderProviderSelects(); renderProviderList();
+      };
+      row.appendChild(useBtn); row.appendChild(editBtn); row.appendChild(delBtn);
+      box.appendChild(row);
+    });
+  }
+  $("addProviderBtn").addEventListener("click", () => openEdit(null));
+
+  // ---------- 提供商编辑弹窗 ----------
+  function openEdit(id) {
+    editingProviderId = id;
+    const p = id ? state.providers.find(x => x.id === id) : null;
+    $("editTitle").textContent = p ? "编辑 API 配置" : "添加 API 配置";
+    $("edName").value = p ? p.name : "";
+    $("edUrl").value = p ? p.url : "";
+    $("edKey").value = p ? p.key : "";
+    $("edModels").value = p ? p.models.join(", ") : "";
+    edStatus("", "");
+    $("editOverlay").classList.add("show");
+  }
+  function closeEdit() { $("editOverlay").classList.remove("show"); }
+  function edStatus(msg, cls) { const el = $("edStatus"); el.textContent = msg; el.className = "status " + (cls || ""); }
+  $("edCancelBtn").addEventListener("click", closeEdit);
+  $("editOverlay").addEventListener("click", e => { if (e.target === $("editOverlay")) closeEdit(); });
+
+  $("edFetchBtn").addEventListener("click", async () => {
+    const url = normUrl($("edUrl").value);
+    const key = $("edKey").value.trim();
+    if (!url) { edStatus("请先填写 API URL", "err"); return; }
+    edStatus("正在拉取…", "");
+    try {
+      const res = await fetch(url + "/models", { headers: { "Authorization": "Bearer " + key } });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const list = (data.data || data.models || []).map(m => m.id || m.name || m).filter(Boolean).sort();
+      if (!list.length) throw new Error("返回为空");
+      $("edModels").value = list.join(", ");
+      edStatus("成功拉取 " + list.length + " 个模型", "ok");
+    } catch (err) { edStatus("拉取失败：" + err.message + "（可手动填写）", "err"); }
+  });
+
+  $("edSaveBtn").addEventListener("click", () => {
+    const name = $("edName").value.trim();
+    const url = normUrl($("edUrl").value);
+    const key = $("edKey").value.trim();
+    const models = $("edModels").value.split(",").map(s => s.trim()).filter(Boolean);
+    if (!name) { edStatus("请填写名称", "err"); return; }
+    if (!url) { edStatus("请填写 API URL", "err"); return; }
+    if (!models.length) { edStatus("请至少填写一个模型，或点击拉取", "err"); return; }
+    if (editingProviderId) {
+      const p = state.providers.find(x => x.id === editingProviderId);
+      Object.assign(p, { name, url, key, models });
+    } else {
+      const p = { id: uid(), name, url, key, models };
+      state.providers.push(p);
+      if (!state.activeProviderId) state.activeProviderId = p.id;
+    }
+    save(); closeEdit(); renderProviderSelects(); renderProviderList();
+  });
+
+  // ---------- 对话设置弹窗 ----------
+  function renderPromptSelect(selectedId) {
+    const sel = $("ccPromptSelect");
+    sel.innerHTML = '<option value="">（不使用 / 自定义）</option>';
+    state.prompts.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.id; o.textContent = p.name || "(未命名)";
+      sel.appendChild(o);
+    });
+    sel.value = state.prompts.find(p => p.id === selectedId) ? selectedId : "";
+  }
+  $("chatSettingsBtn").addEventListener("click", () => {
+    const s = activeSession();
+    if (!s) { newSession(); }
+    const cur = activeSession();
+    renderPromptSelect(cur.promptId || "");
+    $("ccSystem").value = cur.systemPrompt || "";
+    $("ccTemp").value = cur.temperature ?? "";
+    $("ccMaxTokens").value = cur.maxTokens ?? "";
+    $("chatCfgOverlay").classList.add("show");
+  });
+  $("ccPromptSelect").addEventListener("change", e => {
+    const p = state.prompts.find(x => x.id === e.target.value);
+    if (p) $("ccSystem").value = p.content || "";
+  });
+  $("ccCancelBtn").addEventListener("click", () => $("chatCfgOverlay").classList.remove("show"));
+  $("chatCfgOverlay").addEventListener("click", e => { if (e.target === $("chatCfgOverlay")) e.currentTarget.classList.remove("show"); });
+  $("ccSaveBtn").addEventListener("click", () => {
+    const s = activeSession();
+    s.promptId = $("ccPromptSelect").value || "";
+    s.systemPrompt = $("ccSystem").value;
+    const t = $("ccTemp").value; s.temperature = t === "" ? null : Number(t);
+    const mt = $("ccMaxTokens").value; s.maxTokens = mt === "" ? null : Number(mt);
+    save();
+    $("chatCfgOverlay").classList.remove("show");
+  });
+
+  // ---------- 提示词库弹窗 ----------
+  function openPrompts() { renderPromptList(); $("promptOverlay").classList.add("show"); }
+  function closePrompts() { $("promptOverlay").classList.remove("show"); }
+  $("managePromptBtn").addEventListener("click", openPrompts);
+  $("closePromptBtn").addEventListener("click", closePrompts);
+  $("promptOverlay").addEventListener("click", e => { if (e.target === $("promptOverlay")) closePrompts(); });
+
+  function renderPromptList() {
+    const box = $("promptList");
+    box.innerHTML = "";
+    if (!state.prompts.length) {
+      box.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">还没有提示词，点击下方添加。</div>';
+      return;
+    }
+    state.prompts.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "provider-row";
+      const preview = (p.content || "").replace(/\s+/g, " ").slice(0, 60);
+      row.innerHTML =
+        '<div style="flex:1;min-width:0">' +
+          '<div class="pname">' + escapeHtml(p.name || "(未命名)") + '</div>' +
+          '<div class="pmeta">' + escapeHtml(preview || "（空）") + '</div>' +
+        '</div>';
+      const editBtn = document.createElement("button");
+      editBtn.className = "mini"; editBtn.textContent = "✎"; editBtn.title = "编辑";
+      editBtn.onclick = () => openPromptEdit(p.id);
+      const delBtn = document.createElement("button");
+      delBtn.className = "mini del"; delBtn.textContent = "🗑"; delBtn.title = "删除";
+      delBtn.onclick = () => {
+        if (!confirm("删除提示词「" + (p.name || "") + "」？")) return;
+        state.prompts = state.prompts.filter(x => x.id !== p.id);
+        state.sessions.forEach(s => { if (s.promptId === p.id) s.promptId = ""; });
+        save(); renderPromptList();
+      };
+      row.appendChild(editBtn); row.appendChild(delBtn);
+      box.appendChild(row);
+    });
+  }
+  $("addPromptBtn").addEventListener("click", () => openPromptEdit(null));
+
+  // ---------- 提示词编辑弹窗 ----------
+  function openPromptEdit(id) {
+    editingPromptId = id;
+    const p = id ? state.prompts.find(x => x.id === id) : null;
+    $("prEditTitle").textContent = p ? "编辑提示词" : "添加提示词";
+    $("prName").value = p ? p.name : "";
+    $("prContent").value = p ? p.content : "";
+    $("prStatus").textContent = ""; $("prStatus").className = "status";
+    $("promptEditOverlay").classList.add("show");
+  }
+  function closePromptEdit() { $("promptEditOverlay").classList.remove("show"); }
+  $("prCancelBtn").addEventListener("click", closePromptEdit);
+  $("promptEditOverlay").addEventListener("click", e => { if (e.target === $("promptEditOverlay")) closePromptEdit(); });
+  $("prSaveBtn").addEventListener("click", () => {
+    const name = $("prName").value.trim();
+    const content = $("prContent").value;
+    if (!name) { const el = $("prStatus"); el.textContent = "请填写名称"; el.className = "status err"; return; }
+    if (editingPromptId) {
+      const p = state.prompts.find(x => x.id === editingPromptId);
+      Object.assign(p, { name, content });
+    } else {
+      state.prompts.push({ id: uid(), name, content });
+    }
+    save(); closePromptEdit(); renderPromptList();
+  });
+
+  // ---------- 初始化 ----------
+  load();
+  if (!state.sessions.length) newSession();
+  if (!state.activeSessionId || !activeSession()) state.activeSessionId = state.sessions[0].id;
+  renderSessions();
+  renderProviderSelects();
+  renderChat();
+  if (!state.providers.length) openApi();
+})();
+</script>
+</body>
+</html>
